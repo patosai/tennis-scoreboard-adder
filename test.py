@@ -24,6 +24,7 @@ class ScoreFileParserTest(unittest.TestCase):
         self.assertEqual(30.1, core.parse_timestamp_string("30.100"))
         self.assertEqual(30.9, core.parse_timestamp_string("30.9"))
         self.assertEqual(9059.9, core.parse_timestamp_string("2:30:59.9"))
+        self.assertEqual(245, core.parse_timestamp_string("4:5"))
 
 
 if __name__ == '__main__':

@@ -3,13 +3,20 @@
 from moviepy.editor import *
 import functools
 import json
+import os
+import subprocess
 import sys
 
 
 def parse_timestamp_string(timestamp):
     """ex. 1:14.567 -> 74.567"""
     parts = timestamp.split(':')
-    [seconds, millis] = parts[-1].split('.')
+    seconds = ""
+    millis = ""
+    last_part = parts[-1].split('.')
+    seconds = last_part[0]
+    if len(last_part) > 1:
+        millis = last_part[1]
     nonmilli_parts = parts[:-1] + [seconds]
     seconds = functools.reduce(lambda accumulator, item: 60*accumulator + int(item), nonmilli_parts, 0)
     millis = millis.ljust(3, '0')[:3]
@@ -19,9 +26,15 @@ def parse_timestamp_string(timestamp):
 def validate_score_json(scores):
     assert isinstance(scores, list)
     for score in scores:
-        assert 'timestamp' in score, "Needs a timestamp"
-        if isinstance(score['timestamp'], str):
-            score['timestamp'] = parse_timestamp_string(score['timestamp'])
+        assert 'timestamp_start' in score, "Needs a start timestamp"
+        assert 'timestamp_end' in score, "Needs a start timestamp"
+        original_start = score['timestamp_start']
+        original_end = score['timestamp_end']
+        if isinstance(score['timestamp_start'], str):
+            score['timestamp_start'] = parse_timestamp_string(score['timestamp_start'])
+        if isinstance(score['timestamp_end'], str):
+            score['timestamp_end'] = parse_timestamp_string(score['timestamp_end'])
+        assert score['timestamp_start'] < score['timestamp_end'], "Start timestamp needs to be the before timestamp. Got start: %s, end: %s" % (original_start, original_end)
         assert 'serving' in score, "Needs who's serving"
         assert score['serving'] in ["me", "them"], "'serving' should be 'me' or 'them', got: %s" % score['serving']
         assert isinstance(score['my_score'], list), "my_score needs to be a list"
@@ -30,6 +43,7 @@ def validate_score_json(scores):
         if len(score['my_score']) > 0:
             assert score['my_score'][-1] in [0, 15, 30, 40, "AD"], "invalid me score: %s" % score['my_score'][-1]
             assert score['their_score'][-1] in [0, 15, 30, 40, "AD"], "invalid them score: %s" % score['their_score'][-1]
+    assert len(set([score['timestamp_start'] for score in scores])) == len(scores), "Duplicate score timestamp found"
     return scores
 
 
@@ -40,8 +54,43 @@ def parse_score_file(filename):
     return scores
 
 
+def create_new_video_using_ffmpeg(scores, video_filename):
+    scores.sort(key=lambda x: x['timestamp_start'])
+    video_filename_split = video_filename.split(".")
+    extension = video_filename_split[-1]
+    output_folder = ".".join(video_filename_split[:-1])
+    os.makedirs(output_folder, exist_ok=False)
+    files = []
+    for idx, score in enumerate(scores):
+        start_in_original_video = score['timestamp_start']
+        end_in_original_video = score['timestamp_end']
+        duration = end_in_original_video - start_in_original_video
+        filename = "{}.{}".format(str(idx).zfill(3), extension)
+        complete_filename = os.path.join(output_folder, filename)
+        subprocess.call(["ffmpeg",
+                         "-i", str(video_filename),
+                         "-ss", str(start_in_original_video),
+                         "-t", str(duration),
+                         complete_filename])
+        files.append(complete_filename)
+    output_concat_filename = os.path.join(output_folder, "files.txt")
+    with open(output_concat_filename, 'w') as f:
+        content = "\n".join(["file '{}'".format(file) for file in files])
+        f.write(content)
+
+    output_filename = ".".join(video_filename_split.insert(-1, "edited"))
+    subprocess.call(["ffmpeg",
+                     "-f", "concat",
+                     "-i", output_concat_filename,
+                     "-c:v", "libx264", # constant 30FPS so audio doesn't become out of sync due to moviepy
+                     "-crf", "18",
+                     "-c:a", "copy",
+                     output_filename])
+    return output_filename
+
+
 def add_scores_to_video(scores, video_filename, save_instead_of_preview=False):
-    scores.sort(key=lambda x: x['timestamp'])
+    scores.sort(key=lambda x: x['timestamp_start'])
     original_video = VideoFileClip(video_filename)
 
     COL_1_START = 0.03
@@ -51,19 +100,21 @@ def add_scores_to_video(scores, video_filename, save_instead_of_preview=False):
     ROW_1_START = 0.9
     ROW_2_START = 0.94
 
-    clip_total_duration = original_video.duration
     composite_clip_components = [original_video]
-    for score_idx, score in enumerate(scores):
-        start = score['timestamp']
-        end = scores[score_idx+1]['timestamp'] if score_idx != (len(scores)-1) else clip_total_duration
-        duration = end - start
+    running_clip_duration_seconds = 0
+    for score in scores:
+        start_in_original_video = score['timestamp_start']
+        end_in_original_video = score['timestamp_end']
+        duration = end_in_original_video - start_in_original_video
+
+        start = running_clip_duration_seconds
 
         my_name = "Patrick"
-        opp_name = "White shirt"
+        opp_name = "White hair"
         if score['serving'] == "me":
-            my_name += "*"
+            my_name += " •"
         elif score['serving'] == "them":
-            opp_name += "*"
+            opp_name += " •"
         my_name_text = TextClip(my_name, fontsize=24, color='white', font="Helvetica Neue").set_position((COL_1_START, ROW_1_START), relative=True).set_start(start).set_duration(duration)
         opponent_text = TextClip(opp_name, fontsize=24, color='white', font="Helvetica Neue").set_position((COL_1_START, ROW_2_START), relative=True).set_start(start).set_duration(duration)
         composite_clip_components.append(my_name_text)
@@ -76,18 +127,20 @@ def add_scores_to_video(scores, video_filename, save_instead_of_preview=False):
             new_text = TextClip(str(their_score), fontsize=24, color='white', font="Helvetica Neue").set_position((COL_SCORE_START + (idx*COL_SCORE_DELTA), ROW_2_START), relative=True).set_start(start).set_duration(duration)
             composite_clip_components.append(new_text)
 
+        running_clip_duration_seconds += duration
+
     video = CompositeVideoClip(composite_clip_components)
 
     # do some dirty hack to prevent "AttributeError: 'CompositeAudioClip' object has no attribute 'fps'"
-    aud = video.audio.set_fps(44100)
-    video = video.without_audio().set_audio(aud)
+    # aud = video.audio.set_fps(44100)
+    # video = video.without_audio().set_audio(aud)
 
     if save_instead_of_preview:
         chopped_video_filename = video_filename.split('.')
         chopped_video_filename.insert(-1, "edited")
         new_filename = '.'.join(chopped_video_filename)
         print("saving to: " + new_filename)
-        video.write_videofile(new_filename, codec="libx264")
+        video.write_videofile(new_filename, codec="mpeg4", bitrate='8000k')
     else:
         # run the preview
         video.preview()
@@ -98,4 +151,6 @@ if __name__ == "__main__":
     score_filename = sys.argv[2]
     print("Video file: %s, score file: %s" % (video_filename, score_filename))
     scores = parse_score_file(score_filename)
-    add_scores_to_video(scores, video_filename, save_instead_of_preview=True)
+    # clipped_video = create_new_video_using_ffmpeg(scores, video_filename)
+    clipped_video = video_filename
+    add_scores_to_video(scores, clipped_video, save_instead_of_preview=True)
