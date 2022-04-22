@@ -26,8 +26,8 @@ def parse_timestamp_string(timestamp):
 def validate_score_json(scores):
     assert isinstance(scores, list)
     for score in scores:
-        assert 'timestamp_start' in score, "Needs a start timestamp"
-        assert 'timestamp_end' in score, "Needs a start timestamp"
+        assert 'timestamp_start' in score, "score needs a start timestamp"
+        assert 'timestamp_end' in score, "score needs a start timestamp"
         original_start = score['timestamp_start']
         original_end = score['timestamp_end']
         if isinstance(score['timestamp_start'], str):
@@ -35,7 +35,7 @@ def validate_score_json(scores):
         if isinstance(score['timestamp_end'], str):
             score['timestamp_end'] = parse_timestamp_string(score['timestamp_end'])
         assert score['timestamp_start'] < score['timestamp_end'], "Start timestamp needs to be the before timestamp. Got start: %s, end: %s" % (original_start, original_end)
-        assert 'serving' in score, "Needs who's serving"
+        assert 'serving' in score, "score needs who's serving"
         assert score['serving'] in ["me", "them"], "'serving' should be 'me' or 'them', got: %s" % score['serving']
         assert isinstance(score['my_score'], list), "my_score needs to be a list"
         assert isinstance(score['their_score'], list), "their_score needs to be a list"
@@ -44,18 +44,33 @@ def validate_score_json(scores):
             assert score['my_score'][-1] in [0, 15, 30, 40, "AD"], "invalid me score: %s" % score['my_score'][-1]
             assert score['their_score'][-1] in [0, 15, 30, 40, "AD"], "invalid them score: %s" % score['their_score'][-1]
     assert len(set([score['timestamp_start'] for score in scores])) == len(scores), "Duplicate score timestamp found"
-    return scores
-
-
-def parse_score_file(filename):
-    with open(filename) as file:
-        scores = json.load(file)
-    scores = validate_score_json(scores)
-    return scores
-
-
-def create_new_video_using_ffmpeg(scores, video_filename):
     scores.sort(key=lambda x: x['timestamp_start'])
+    return scores
+
+
+def validate_notes(notes):
+    assert isinstance(notes, list)
+    for note in notes:
+        assert 'message' in note, "note needs a message"
+        assert 'timestamp' in note, "note needs a timestamp"
+        if isinstance(note['timestamp'], str):
+            note['timestamp'] = parse_timestamp_string(note['timestamp'])
+    return notes
+
+
+def parse_config_file(filename):
+    with open(filename) as file:
+        config = json.load(file)
+    assert config['name']
+    assert config['opponent_name']
+    config['scores'] = validate_score_json(config['scores'])
+    config['notes'] = validate_notes(config['notes'])
+    return config
+
+
+def create_new_video_using_ffmpeg(config, video_filename):
+    scores = config['scores']
+
     video_filename_split = video_filename.split(".")
     extension = video_filename_split[-1]
     output_folder = ".".join(video_filename_split[:-1])
@@ -78,19 +93,18 @@ def create_new_video_using_ffmpeg(scores, video_filename):
         content = "\n".join(["file '{}'".format(file) for file in files])
         f.write(content)
 
-    output_filename = ".".join(video_filename_split.insert(-1, "edited"))
+    output_filename = ".".join(video_filename_split.insert(-1, "clipped"))
     subprocess.call(["ffmpeg",
                      "-f", "concat",
                      "-i", output_concat_filename,
-                     "-c:v", "libx264", # constant 30FPS so audio doesn't become out of sync due to moviepy
-                     "-crf", "18",
+                     "-c:v", "mpeg4", # constant 30FPS so audio doesn't become out of sync due to moviepy
+                     "-crf", "16",
                      "-c:a", "copy",
                      output_filename])
     return output_filename
 
 
-def add_scores_to_video(scores, video_filename, save_instead_of_preview=False):
-    scores.sort(key=lambda x: x['timestamp_start'])
+def add_labels_to_video(config, video_filename, save_instead_of_preview=False):
     original_video = VideoFileClip(video_filename)
 
     COL_1_START = 0.03
@@ -102,21 +116,21 @@ def add_scores_to_video(scores, video_filename, save_instead_of_preview=False):
 
     composite_clip_components = [original_video]
     running_clip_duration_seconds = 0
-    for score in scores:
+    for score in config['scores']:
         start_in_original_video = score['timestamp_start']
         end_in_original_video = score['timestamp_end']
         duration = end_in_original_video - start_in_original_video
 
         start = running_clip_duration_seconds
 
-        my_name = "Patrick"
-        opp_name = "White hair"
+        my_name = config['name']
+        opponent_name = config['opponent_name']
         if score['serving'] == "me":
             my_name += " •"
         elif score['serving'] == "them":
-            opp_name += " •"
+            opponent_name += " •"
         my_name_text = TextClip(my_name, fontsize=24, color='white', font="Helvetica Neue").set_position((COL_1_START, ROW_1_START), relative=True).set_start(start).set_duration(duration)
-        opponent_text = TextClip(opp_name, fontsize=24, color='white', font="Helvetica Neue").set_position((COL_1_START, ROW_2_START), relative=True).set_start(start).set_duration(duration)
+        opponent_text = TextClip(opponent_name, fontsize=24, color='white', font="Helvetica Neue").set_position((COL_1_START, ROW_2_START), relative=True).set_start(start).set_duration(duration)
         composite_clip_components.append(my_name_text)
         composite_clip_components.append(opponent_text)
 
@@ -150,7 +164,7 @@ if __name__ == "__main__":
     video_filename = sys.argv[1]
     score_filename = sys.argv[2]
     print("Video file: %s, score file: %s" % (video_filename, score_filename))
-    scores = parse_score_file(score_filename)
-    # clipped_video = create_new_video_using_ffmpeg(scores, video_filename)
+    config = parse_config_file(score_filename)
+    clipped_video = create_new_video_using_ffmpeg(config, video_filename)
     clipped_video = video_filename
-    add_scores_to_video(scores, clipped_video, save_instead_of_preview=True)
+    # add_labels_to_video(config, clipped_video, save_instead_of_preview=True)
