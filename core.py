@@ -25,6 +25,8 @@ def parse_timestamp_string(timestamp):
 
 def validate_score_json(scores):
     assert isinstance(scores, list)
+    seen_timestamps = set()
+    dupe_timestamps = []
     for score in scores:
         assert 'timestamp_start' in score, "score needs a start timestamp"
         assert 'timestamp_end' in score, "score needs a start timestamp"
@@ -41,9 +43,14 @@ def validate_score_json(scores):
         assert isinstance(score['their_score'], list), "their_score needs to be a list"
         assert len(score['my_score']) == len(score['their_score']), "player scores need to be the same length"
         if len(score['my_score']) > 0:
-            assert score['my_score'][-1] in [0, 15, 30, 40, "AD"], "invalid me score: %s" % score['my_score'][-1]
-            assert score['their_score'][-1] in [0, 15, 30, 40, "AD"], "invalid them score: %s" % score['their_score'][-1]
-    assert len(set([score['timestamp_start'] for score in scores])) == len(scores), "Duplicate score timestamp found"
+            assert (score['my_score'][-1] in [0, 15, 30, 40, "AD"] or (len(score['my_score']) == 3 and 0 <= score['my_score'][2])), "invalid me score: %s" % score['my_score'][-1]
+            assert (score['their_score'][-1] in [0, 15, 30, 40, "AD"] or (len(score['their_score']) == 3 and 0 <= score['their_score'][2])), "invalid them score: %s" % score['their_score'][-1]
+
+        if original_start in seen_timestamps:
+            dupe_timestamps.append(original_start)
+        else:
+            seen_timestamps.add(original_start)
+    assert len(set([score['timestamp_start'] for score in scores])) == len(scores), "Duplicate score timestamp found: %s" % str(dupe_timestamps)
     scores.sort(key=lambda x: x['timestamp_start'])
     return scores
 
