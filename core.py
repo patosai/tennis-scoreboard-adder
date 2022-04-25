@@ -111,7 +111,7 @@ def create_new_video_using_ffmpeg(config, video_filename):
                      "-f", "concat",
                      "-safe", "0",
                      "-i", output_concat_filename,
-                     "-vsync", "cfr",
+                     "-r", "30",
                      "-crf", "16",
                      output_filename])
     return output_filename
