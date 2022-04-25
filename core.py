@@ -55,13 +55,17 @@ def validate_score_json(scores):
     return scores
 
 
-def validate_notes(notes):
+def validate_notes(notes, scores):
     assert isinstance(notes, list)
     for note in notes:
         assert 'message' in note, "note needs a message"
         assert 'timestamp' in note, "note needs a timestamp"
         if isinstance(note['timestamp'], str):
             note['timestamp'] = parse_timestamp_string(note['timestamp'])
+
+        score_clips_containing_note_with_buffer_at_end = list(filter(lambda x: (x['timestamp_start'] <= note['timestamp'] <= (x['timestamp_end']-1)), scores))
+        assert len(score_clips_containing_note_with_buffer_at_end) >= 1, "didn't find score clip containing note with 1 sec buffer at end: %s" % note
+    notes.sort(key=lambda x: x['timestamp'])
     return notes
 
 
@@ -71,7 +75,7 @@ def parse_config_file(filename):
     assert config['name']
     assert config['opponent_name']
     config['scores'] = validate_score_json(config['scores'])
-    config['notes'] = validate_notes(config['notes'])
+    config['notes'] = validate_notes(config['notes'], config['scores'])
     return config
 
 
@@ -100,13 +104,15 @@ def create_new_video_using_ffmpeg(config, video_filename):
         content = "\n".join(["file '{}'".format(file) for file in files])
         f.write(content)
 
-    output_filename = ".".join(video_filename_split.insert(-1, "clipped"))
+    output_filename_split = video_filename_split.copy()
+    output_filename_split.insert(-1, "clipped")
+    output_filename = ".".join(output_filename_split)
     subprocess.call(["ffmpeg",
                      "-f", "concat",
+                     "-safe", "0",
                      "-i", output_concat_filename,
-                     "-c:v", "mpeg4", # constant 30FPS so audio doesn't become out of sync due to moviepy
+                     "-vsync", "cfr",
                      "-crf", "16",
-                     "-c:a", "copy",
                      output_filename])
     return output_filename
 
@@ -120,6 +126,8 @@ def add_labels_to_video(config, video_filename, save_instead_of_preview=False):
 
     ROW_1_START = 0.9
     ROW_2_START = 0.94
+
+    current_note_index = 0
 
     composite_clip_components = [original_video]
     running_clip_duration_seconds = 0
@@ -148,6 +156,16 @@ def add_labels_to_video(config, video_filename, save_instead_of_preview=False):
             new_text = TextClip(str(their_score), fontsize=24, color='white', font="Helvetica Neue").set_position((COL_SCORE_START + (idx*COL_SCORE_DELTA), ROW_2_START), relative=True).set_start(start).set_duration(duration)
             composite_clip_components.append(new_text)
 
+        # add note
+        if current_note_index < len(config['notes']):
+            note = config['notes'][current_note_index]
+            if start_in_original_video <= note['timestamp'] <= end_in_original_video:
+                note_start = start - note['timestamp']
+                note_duration = 1
+                note_text = TextClip(note['message'], fontsize=24, color='white', font="Helvetica Neue").set_position((0.5, ROW_1_START), relative=True).set_start(note_start).set_duration(note_duration)
+                composite_clip_components.append(note_text)
+                current_note_index += 1
+
         running_clip_duration_seconds += duration
 
     video = CompositeVideoClip(composite_clip_components)
@@ -173,5 +191,4 @@ if __name__ == "__main__":
     print("Video file: %s, score file: %s" % (video_filename, score_filename))
     config = parse_config_file(score_filename)
     clipped_video = create_new_video_using_ffmpeg(config, video_filename)
-    clipped_video = video_filename
-    # add_labels_to_video(config, clipped_video, save_instead_of_preview=True)
+    add_labels_to_video(config, clipped_video, save_instead_of_preview=True)

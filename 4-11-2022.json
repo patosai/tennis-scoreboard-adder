@@ -227,13 +227,11 @@
   "notes": [
     {"timestamp": "05:28.890", "message": "out"},
     {"timestamp": "08:45.997", "message": "in"},
-    {"timestamp": "15:01.678", "message": "in"},
     {"timestamp": "25:43.293", "message": "in"},
     {"timestamp": "31:36.178", "message": "out"},
     {"timestamp": "33:50.528", "message": "let"},
     {"timestamp": "38:01.393", "message": "out"},
     {"timestamp": "39:31.515", "message": "out"},
-    {"timestamp": "40:50.505", "message": "out"},
     {"timestamp": "50:58.223", "message": "in"},
     {"timestamp": "57:10.573", "message": "in"},
     {"timestamp": "58:54.460", "message": "out"},
