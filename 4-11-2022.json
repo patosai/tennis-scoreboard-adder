@@ -162,7 +162,7 @@
     {"timestamp_start": "1:12:12", "timestamp_end": "1:12:16", "my_score": [4, 4, 0], "their_score": [6, 0, 0], "serving": "them"},
     {"timestamp_start": "1:12:29", "timestamp_end": "1:12:42", "my_score": [4, 4, 0], "their_score": [6, 0, 0], "serving": "them"},
     {"timestamp_start": "1:13:00", "timestamp_end": "1:13:06", "my_score": [4, 4, 0], "their_score": [6, 0, 15], "serving": "them"},
-    {"timestamp_start": "1:13:23", "timestamp_end": "1:13:30", "my_score": [4, 4, 0], "their_score": [6, 0, 40], "serving": "them"},
+    {"timestamp_start": "1:13:23", "timestamp_end": "1:13:30", "my_score": [4, 4, 0], "their_score": [6, 0, 30], "serving": "them"},
     {"timestamp_start": "1:13:46", "timestamp_end": "1:13:51", "my_score": [4, 4, 0], "their_score": [6, 0, 40], "serving": "them"},
     {"timestamp_start": "1:14:01", "timestamp_end": "1:14:15", "my_score": [4, 4, 0], "their_score": [6, 0, 40], "serving": "them"},
     {"timestamp_start": "1:14:25", "timestamp_end": "1:14:30", "my_score": [4, 4, 15], "their_score": [6, 0, 40], "serving": "them"},
