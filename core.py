@@ -86,23 +86,46 @@ def create_new_video_using_ffmpeg(config, video_filename):
     extension = video_filename_split[-1]
     output_folder = ".".join(video_filename_split[:-1])
     os.makedirs(output_folder, exist_ok=False)
-    files = []
-    for idx, score in enumerate(scores):
-        start_in_original_video = score['timestamp_start']
-        end_in_original_video = score['timestamp_end']
-        duration = end_in_original_video - start_in_original_video
-        filename = "{}.{}".format(str(idx).zfill(3), extension)
-        complete_filename = os.path.join(output_folder, filename)
-        subprocess.call(["ffmpeg",
-                         "-i", str(video_filename),
-                         "-ss", str(start_in_original_video),
-                         "-t", str(duration),
-                         complete_filename])
-        files.append(complete_filename)
+    # files = []
+    # for idx, score in enumerate(scores):
+    #     start_in_original_video = score['timestamp_start']
+    #     end_in_original_video = score['timestamp_end']
+    #     duration = end_in_original_video - start_in_original_video
+    #     filename = "{}.{}".format(str(idx).zfill(3), extension)
+    #     complete_filename = os.path.join(output_folder, filename)
+    #     subprocess.call(["ffmpeg",
+    #                      "-i", str(video_filename),
+    #                      "-ss", str(start_in_original_video),
+    #                      "-t", str(duration),
+    #                      complete_filename])
+    #     files.append(complete_filename)
+    # output_concat_filename = os.path.join(output_folder, "files.txt")
+    # with open(output_concat_filename, 'w') as f:
+    #     content = "\n".join(["file '{}'".format(file) for file in files])
+    #     f.write(content)
+    #
+    # output_filename_split = video_filename_split.copy()
+    # output_filename_split.insert(-1, "clipped")
+    # output_filename = ".".join(output_filename_split)
+    # subprocess.call(["ffmpeg",
+    #                  "-f", "concat",
+    #                  "-safe", "0",
+    #                  "-i", output_concat_filename,
+    #                  "-r", "30",
+    #                  "-crf", "16",
+    #                  output_filename])
+    # return output_filename
+
     output_concat_filename = os.path.join(output_folder, "files.txt")
     with open(output_concat_filename, 'w') as f:
-        content = "\n".join(["file '{}'".format(file) for file in files])
-        f.write(content)
+        for idx, score in enumerate(scores):
+            start_in_original_video = score['timestamp_start']
+            end_in_original_video = score['timestamp_end']
+            content = "\n".join(["file '{}'".format(video_filename),
+                                 "inpoint {}".format(start_in_original_video),
+                                 "outpoint {}".format(end_in_original_video),
+                                 ""])
+            f.write(content)
 
     output_filename_split = video_filename_split.copy()
     output_filename_split.insert(-1, "clipped")
@@ -111,8 +134,6 @@ def create_new_video_using_ffmpeg(config, video_filename):
                      "-f", "concat",
                      "-safe", "0",
                      "-i", output_concat_filename,
-                     "-r", "30",
-                     "-crf", "16",
                      output_filename])
     return output_filename
 
@@ -160,8 +181,8 @@ def add_labels_to_video(config, video_filename, save_instead_of_preview=False):
         if current_note_index < len(config['notes']):
             note = config['notes'][current_note_index]
             if start_in_original_video <= note['timestamp'] <= end_in_original_video:
-                note_start = start - note['timestamp']
-                note_duration = 1
+                note_start = start + (note['timestamp'] - start_in_original_video)
+                note_duration = 0.5
                 note_text = TextClip(note['message'], fontsize=24, color='white', font="Helvetica Neue").set_position((0.5, ROW_1_START), relative=True).set_start(note_start).set_duration(note_duration)
                 composite_clip_components.append(note_text)
                 current_note_index += 1
@@ -169,10 +190,6 @@ def add_labels_to_video(config, video_filename, save_instead_of_preview=False):
         running_clip_duration_seconds += duration
 
     video = CompositeVideoClip(composite_clip_components)
-
-    # do some dirty hack to prevent "AttributeError: 'CompositeAudioClip' object has no attribute 'fps'"
-    # aud = video.audio.set_fps(44100)
-    # video = video.without_audio().set_audio(aud)
 
     if save_instead_of_preview:
         chopped_video_filename = video_filename.split('.')
