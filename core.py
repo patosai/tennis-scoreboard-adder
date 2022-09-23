@@ -86,46 +86,24 @@ def create_new_video_using_ffmpeg(config, video_filename):
     extension = video_filename_split[-1]
     output_folder = ".".join(video_filename_split[:-1])
     os.makedirs(output_folder, exist_ok=False)
-    # files = []
-    # for idx, score in enumerate(scores):
-    #     start_in_original_video = score['timestamp_start']
-    #     end_in_original_video = score['timestamp_end']
-    #     duration = end_in_original_video - start_in_original_video
-    #     filename = "{}.{}".format(str(idx).zfill(3), extension)
-    #     complete_filename = os.path.join(output_folder, filename)
-    #     subprocess.call(["ffmpeg",
-    #                      "-i", str(video_filename),
-    #                      "-ss", str(start_in_original_video),
-    #                      "-t", str(duration),
-    #                      complete_filename])
-    #     files.append(complete_filename)
-    # output_concat_filename = os.path.join(output_folder, "files.txt")
-    # with open(output_concat_filename, 'w') as f:
-    #     content = "\n".join(["file '{}'".format(file) for file in files])
-    #     f.write(content)
-    #
-    # output_filename_split = video_filename_split.copy()
-    # output_filename_split.insert(-1, "clipped")
-    # output_filename = ".".join(output_filename_split)
-    # subprocess.call(["ffmpeg",
-    #                  "-f", "concat",
-    #                  "-safe", "0",
-    #                  "-i", output_concat_filename,
-    #                  "-r", "30",
-    #                  "-crf", "16",
-    #                  output_filename])
-    # return output_filename
-
+    files = []
+    for idx, score in enumerate(scores):
+        start_in_original_video = score['timestamp_start']
+        end_in_original_video = score['timestamp_end']
+        filename = "{}.{}".format(str(idx).zfill(3), extension)
+        complete_filename = os.path.join(output_folder, filename)
+        subprocess.call(["ffmpeg",
+                         "-ss", str(start_in_original_video),
+                         "-to", str(end_in_original_video),
+                         "-i", str(video_filename),
+                         "-c", "copy",
+                         "-fflags", "+shortest", "-max_interleave_delta", "0",
+                         complete_filename])
+        files.append(complete_filename)
     output_concat_filename = os.path.join(output_folder, "files.txt")
     with open(output_concat_filename, 'w') as f:
-        for idx, score in enumerate(scores):
-            start_in_original_video = score['timestamp_start']
-            end_in_original_video = score['timestamp_end']
-            content = "\n".join(["file '{}'".format(video_filename),
-                                 "inpoint {}".format(start_in_original_video),
-                                 "outpoint {}".format(end_in_original_video),
-                                 ""])
-            f.write(content)
+        content = "\n".join(["file '{}'".format(file) for file in files])
+        f.write(content)
 
     output_filename_split = video_filename_split.copy()
     output_filename_split.insert(-1, "clipped")
@@ -134,6 +112,19 @@ def create_new_video_using_ffmpeg(config, video_filename):
                      "-f", "concat",
                      "-safe", "0",
                      "-i", output_concat_filename,
+                     "-r", "30",
+                     "-crf", "16",
+                     output_filename])
+    return output_filename
+
+    output_filename_split = video_filename_split.copy()
+    output_filename_split.insert(-1, "clipped")
+    output_filename = ".".join(output_filename_split)
+    subprocess.call(["ffmpeg",
+                     "-f", "concat",
+                     "-safe", "0",
+                     "-i", output_concat_filename,
+                     "-c", "copy",
                      output_filename])
     return output_filename
 
