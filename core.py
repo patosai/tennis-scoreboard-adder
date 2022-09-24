@@ -80,6 +80,9 @@ def parse_config_file(filename):
 
 
 def create_new_video_using_ffmpeg(config, video_filename):
+    """Given the config, creates many clips quickly from the video using ffmpeg.
+    Due to the quick clipping mechanism, clip durations likely won't match exactly the duration specified in the config,
+    so clip durations are also returned"""
     scores = config['scores']
 
     video_filename_split = video_filename.split(".")
@@ -90,14 +93,15 @@ def create_new_video_using_ffmpeg(config, video_filename):
     for idx, score in enumerate(scores):
         start_in_original_video = score['timestamp_start']
         end_in_original_video = score['timestamp_end']
+        duration = end_in_original_video - start_in_original_video
         filename = "{}.{}".format(str(idx).zfill(3), extension)
         complete_filename = os.path.join(output_folder, filename)
         subprocess.call(["ffmpeg",
                          "-ss", str(start_in_original_video),
-                         "-to", str(end_in_original_video),
                          "-i", str(video_filename),
+                         "-to", str(duration),
                          "-c", "copy",
-                         "-fflags", "+shortest", "-max_interleave_delta", "0",
+                         "-avoid_negative_ts", "1",
                          complete_filename])
         files.append(complete_filename)
     output_concat_filename = os.path.join(output_folder, "files.txt")
@@ -105,31 +109,32 @@ def create_new_video_using_ffmpeg(config, video_filename):
         content = "\n".join(["file '{}'".format(file) for file in files])
         f.write(content)
 
-    output_filename_split = video_filename_split.copy()
-    output_filename_split.insert(-1, "clipped")
-    output_filename = ".".join(output_filename_split)
+    concat_filename_split = video_filename_split.copy()
+    concat_filename_split.insert(-1, "clipped")
+    concat_filename = ".".join(concat_filename_split)
     subprocess.call(["ffmpeg",
                      "-f", "concat",
                      "-safe", "0",
                      "-i", output_concat_filename,
                      "-r", "30",
+                     "-c:v", "libx264", "-preset", "veryfast",
                      "-crf", "16",
-                     output_filename])
-    return output_filename
+                     "-c:a", "copy",
+                     concat_filename])
 
-    output_filename_split = video_filename_split.copy()
-    output_filename_split.insert(-1, "clipped")
-    output_filename = ".".join(output_filename_split)
-    subprocess.call(["ffmpeg",
-                     "-f", "concat",
-                     "-safe", "0",
-                     "-i", output_concat_filename,
-                     "-c", "copy",
-                     output_filename])
-    return output_filename
+    clip_lengths = [float(subprocess.call(["ffprobe",
+                                           "-v",
+                                           "error",
+                                           "-show_entries",
+                                           "format=duration",
+                                           "-of",
+                                           "default=noprint_wrappers=1:nokey=1",
+                                           file])) for file in files]
+
+    return concat_filename, clip_lengths
 
 
-def add_labels_to_video(config, video_filename, save_instead_of_preview=False):
+def add_labels_to_video(config, video_filename, clip_lengths, save_instead_of_preview=False):
     original_video = VideoFileClip(video_filename)
 
     COL_1_START = 0.03
@@ -143,10 +148,10 @@ def add_labels_to_video(config, video_filename, save_instead_of_preview=False):
 
     composite_clip_components = [original_video]
     running_clip_duration_seconds = 0
-    for score in config['scores']:
+    for idx, score in enumerate(config['scores']):
         start_in_original_video = score['timestamp_start']
         end_in_original_video = score['timestamp_end']
-        duration = end_in_original_video - start_in_original_video
+        duration = clip_lengths[idx]
 
         start = running_clip_duration_seconds
 
@@ -193,10 +198,14 @@ def add_labels_to_video(config, video_filename, save_instead_of_preview=False):
         video.preview()
 
 
-if __name__ == "__main__":
+def main():
     video_filename = sys.argv[1]
     score_filename = sys.argv[2]
     print("Video file: %s, score file: %s" % (video_filename, score_filename))
     config = parse_config_file(score_filename)
-    clipped_video = create_new_video_using_ffmpeg(config, video_filename)
-    add_labels_to_video(config, clipped_video, save_instead_of_preview=True)
+    clipped_video, clip_lengths = create_new_video_using_ffmpeg(config, video_filename)
+    add_labels_to_video(config, clipped_video, clip_lengths, save_instead_of_preview=True)
+
+
+if __name__ == "__main__":
+    main()
