@@ -155,7 +155,7 @@
     {"timestamp_start": "1:43:09", "timestamp_end": "1:43:14", "my_score": [7, 6, 15], "their_score": [5, 5, 15], "serving": "me"},
     {"timestamp_start": "1:43:43", "timestamp_end": "1:43:47", "my_score": [7, 6, 30], "their_score": [5, 5, 15], "serving": "me"},
     {"timestamp_start": "1:43:57", "timestamp_end": "1:44:02", "my_score": [7, 6, 40], "their_score": [5, 5, 15], "serving": "me"},
-    {"timestamp_start": "1:44:08", "timestamp_end": "1:44:12", "my_score": [7, 7], "their_score": [5, 7], "serving": "me"}
+    {"timestamp_start": "1:44:08", "timestamp_end": "1:44:12", "my_score": [7, 7, 0], "their_score": [5, 5, 0], "serving": "me"}
   ],
   "notes": [
     {"timestamp": "17:16", "message": "out"},
