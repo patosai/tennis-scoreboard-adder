@@ -122,6 +122,7 @@ def create_new_video_using_ffmpeg(config, video_filename):
                      "-c:a", "copy",
                      concat_filename])
 
+    # TODO: clip length can be obtained from the initial ffmpeg call to create the clip
     clip_lengths = [float(subprocess.check_output(["ffprobe",
                                                    "-v",
                                                    "error",
@@ -193,6 +194,17 @@ def add_labels_to_video(config, video_filename, clip_lengths, save_instead_of_pr
         new_filename = '.'.join(chopped_video_filename)
         print("saving to: " + new_filename)
         video.write_videofile(new_filename, codec="mpeg4", bitrate='8000k')
+
+        # moviepy causes audio to be out of sync with video, so take old audio and mux it with new video
+        final_filename = chopped_video_filename.copy()
+        final_filename.insert(-1, "final")
+        final_filename = '.'.join(final_filename)
+        subprocess.call(["ffmpeg",
+                         "-an", "-i", new_filename,
+                         "-vn", "-i", video_filename,
+                         "-c:a", "copy",
+                         "-c:v", "copy",
+                         final_filename])
     else:
         # run the preview
         video.preview()
