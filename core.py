@@ -122,14 +122,14 @@ def create_new_video_using_ffmpeg(config, video_filename):
                      "-c:a", "copy",
                      concat_filename])
 
-    clip_lengths = [float(subprocess.call(["ffprobe",
-                                           "-v",
-                                           "error",
-                                           "-show_entries",
-                                           "format=duration",
-                                           "-of",
-                                           "default=noprint_wrappers=1:nokey=1",
-                                           file])) for file in files]
+    clip_lengths = [float(subprocess.check_output(["ffprobe",
+                                                   "-v",
+                                                   "error",
+                                                   "-show_entries",
+                                                   "format=duration",
+                                                   "-of",
+                                                   "default=noprint_wrappers=1:nokey=1",
+                                                   file])) for file in files]
 
     return concat_filename, clip_lengths
 
