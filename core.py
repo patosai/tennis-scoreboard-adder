@@ -117,7 +117,7 @@ def create_new_video_using_ffmpeg(config, video_filename):
                      "-safe", "0",
                      "-i", output_concat_filename,
                      "-r", "30",
-                     "-c:v", "libx264", "-preset", "veryfast",
+                     "-c:v", "libx265", "-preset", "veryfast",
                      "-crf", "16",
                      "-c:a", "copy",
                      concat_filename])
