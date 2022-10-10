@@ -85,9 +85,11 @@ def at_most_one(input_list):
     return input_list[0] if input_list else None
 
 
-def filename_with_added_last_part(filename, last_part):
+def filename_with_added_last_part(filename, last_part, extension=None):
     filename_split = filename.split(".")
     filename_split.insert(-1, last_part)
+    if extension:
+        filename_split[-1] = extension
     return ".".join(filename_split)
 
 
@@ -110,7 +112,6 @@ def create_new_video_using_ffmpeg(config, video_filename, remove_intermediate_fi
     scores = config['scores']
 
     video_filename_split = video_filename.split(".")
-    extension = video_filename_split[-1]
     clip_output_folder = ".".join(video_filename_split[:-1])
     os.makedirs(clip_output_folder, exist_ok=False)
     files = []
@@ -118,36 +119,32 @@ def create_new_video_using_ffmpeg(config, video_filename, remove_intermediate_fi
         start_in_original_video = score['timestamp_start']
         end_in_original_video = score['timestamp_end']
         duration = end_in_original_video - start_in_original_video
-        filename = "{}.{}.ts".format(str(idx).zfill(3), extension)
-        complete_filename = os.path.join(clip_output_folder, filename)
+        clip_filename = "{}.{}".format(str(idx).zfill(3), "mp4")
+        complete_filename = os.path.join(clip_output_folder, clip_filename)
         subprocess.call(["ffmpeg",
                          "-ss", str(start_in_original_video),
                          "-i", str(video_filename),
                          "-to", str(duration),
-                         "-c", "copy",
+                         "-c:v", "libx264",
+                         "-crf", "15",
+                         "-c:a", "copy",
                          complete_filename])
         files.append(complete_filename)
+    filelist_filename = os.path.join(clip_output_folder, "files.txt")
+    with open(filelist_filename, "w") as f:
+        for file in files:
+            f.write(f"file '{file}'\n")
 
-    concat_filename = filename_with_added_last_part(video_filename, "clipped")
+    concat_filename = filename_with_added_last_part(video_filename, "clipped", extension="mp4")
 
     subprocess.call(["ffmpeg",
-                     "-i", "concat:" + "|".join(files),
+                     "-f", "concat",
+                     "-safe", "0",
+                     "-i", filelist_filename,
                      "-c", "copy",
                      concat_filename])
     if remove_intermediate_files:
         subprocess.call(["rm", "-rf", clip_output_folder])
-
-    # because converting to .ts removes displaymatrix rotation, set displaymatrix rotation metadata again
-    # so no reencode is necessary
-    metadata_filename = filename_with_added_last_part(concat_filename, "metadata")
-    rotation = displaymatrix_rotation(video_filename)
-    subprocess.call(["ffmpeg",
-                     "-i", concat_filename,
-                     "-metadata:s:v:0", f"rotate={rotation}",
-                     "-c", "copy",
-                     metadata_filename])
-    if remove_intermediate_files:
-        subprocess.call(["rm", concat_filename])
 
     # TODO: clip length can be obtained from the initial ffmpeg call to create the clip
     clip_lengths = [float(subprocess.check_output(["ffprobe",
@@ -159,7 +156,7 @@ def create_new_video_using_ffmpeg(config, video_filename, remove_intermediate_fi
                                                    "default=noprint_wrappers=1:nokey=1",
                                                    file])) for file in files]
 
-    return metadata_filename, clip_lengths
+    return concat_filename, clip_lengths
 
 
 def add_labels_to_video(config, video_filename, clip_lengths, save_instead_of_preview=False):
