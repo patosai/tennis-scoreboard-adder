@@ -4,6 +4,7 @@ from moviepy.editor import *
 import functools
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -79,7 +80,30 @@ def parse_config_file(filename):
     return config
 
 
-def create_new_video_using_ffmpeg(config, video_filename):
+def at_most_one(input_list):
+    assert len(input_list) <= 1, "expected at most one item"
+    return input_list[0] if input_list else None
+
+
+def filename_with_added_last_part(filename, last_part):
+    filename_split = filename.split(".")
+    filename_split.insert(-1, last_part)
+    return ".".join(filename_split)
+
+
+def displaymatrix_rotation(video_filename):
+    output = subprocess.check_output(["ffprobe", "-of", "json", "-show_entries", "stream", video_filename])
+    output_json = json.loads(output)
+    streams = output_json['streams']
+    video_streams = [stream for stream in streams if stream["codec_type"] == "video"]
+    video_stream = at_most_one(video_streams)
+    side_data = video_stream.get("side_data_list", [])
+    display_matrices = [data for data in side_data if data["side_data_type"] == "Display Matrix"]
+    display_matrix = at_most_one(display_matrices) or {}
+    return display_matrix.get("rotation", 0)
+
+
+def create_new_video_using_ffmpeg(config, video_filename, remove_intermediate_files=True):
     """Given the config, creates many clips quickly from the video using ffmpeg.
     Due to the quick clipping mechanism, clip durations likely won't match exactly the duration specified in the config,
     so clip durations are also returned"""
@@ -87,40 +111,43 @@ def create_new_video_using_ffmpeg(config, video_filename):
 
     video_filename_split = video_filename.split(".")
     extension = video_filename_split[-1]
-    output_folder = ".".join(video_filename_split[:-1])
-    os.makedirs(output_folder, exist_ok=False)
+    clip_output_folder = ".".join(video_filename_split[:-1])
+    os.makedirs(clip_output_folder, exist_ok=False)
     files = []
     for idx, score in enumerate(scores):
         start_in_original_video = score['timestamp_start']
         end_in_original_video = score['timestamp_end']
         duration = end_in_original_video - start_in_original_video
-        filename = "{}.{}".format(str(idx).zfill(3), extension)
-        complete_filename = os.path.join(output_folder, filename)
+        filename = "{}.{}.ts".format(str(idx).zfill(3), extension)
+        complete_filename = os.path.join(clip_output_folder, filename)
         subprocess.call(["ffmpeg",
                          "-ss", str(start_in_original_video),
                          "-i", str(video_filename),
                          "-to", str(duration),
                          "-c", "copy",
-                         "-avoid_negative_ts", "1",
                          complete_filename])
         files.append(complete_filename)
-    output_concat_filename = os.path.join(output_folder, "files.txt")
-    with open(output_concat_filename, 'w') as f:
-        content = "\n".join(["file '{}'".format(file) for file in files])
-        f.write(content)
 
-    concat_filename_split = video_filename_split.copy()
-    concat_filename_split.insert(-1, "clipped")
-    concat_filename = ".".join(concat_filename_split)
+    concat_filename = filename_with_added_last_part(video_filename, "clipped")
+
     subprocess.call(["ffmpeg",
-                     "-f", "concat",
-                     "-safe", "0",
-                     "-i", output_concat_filename,
-                     "-r", "30",
-                     "-c:v", "libx265", "-preset", "veryfast",
-                     "-crf", "16",
-                     "-c:a", "copy",
+                     "-i", "concat:" + "|".join(files),
+                     "-c", "copy",
                      concat_filename])
+    if remove_intermediate_files:
+        subprocess.call(["rm", "-rf", clip_output_folder])
+
+    # because converting to .ts removes displaymatrix rotation, set displaymatrix rotation metadata again
+    # so no reencode is necessary
+    metadata_filename = filename_with_added_last_part(concat_filename, "metadata")
+    rotation = displaymatrix_rotation(video_filename)
+    subprocess.call(["ffmpeg",
+                     "-i", concat_filename,
+                     "-metadata:s:v:0", f"rotate={rotation}",
+                     "-c", "copy",
+                     metadata_filename])
+    if remove_intermediate_files:
+        subprocess.call(["rm", concat_filename])
 
     # TODO: clip length can be obtained from the initial ffmpeg call to create the clip
     clip_lengths = [float(subprocess.check_output(["ffprobe",
@@ -132,7 +159,7 @@ def create_new_video_using_ffmpeg(config, video_filename):
                                                    "default=noprint_wrappers=1:nokey=1",
                                                    file])) for file in files]
 
-    return concat_filename, clip_lengths
+    return metadata_filename, clip_lengths
 
 
 def add_labels_to_video(config, video_filename, clip_lengths, save_instead_of_preview=False):
@@ -215,7 +242,7 @@ def main():
     score_filename = sys.argv[2]
     print("Video file: %s, score file: %s" % (video_filename, score_filename))
     config = parse_config_file(score_filename)
-    clipped_video, clip_lengths = create_new_video_using_ffmpeg(config, video_filename)
+    clipped_video, clip_lengths = create_new_video_using_ffmpeg(config, video_filename, remove_intermediate_files=False)
     add_labels_to_video(config, clipped_video, clip_lengths, save_instead_of_preview=True)
 
 
