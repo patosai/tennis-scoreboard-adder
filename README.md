@@ -9,3 +9,9 @@ The JSON file must be an array of objects, with the following properties:
 - my_score: an array representing game count in each set, with the last element being my score of the current game
 - their_score: same as `my_score`, but for the opponent
 - serving: a string denoting who is serving the current point. Must be one of `me` or `them`
+
+
+Requirements
+-----------
+- requires ffmpeg and imagemagick
+- pip requirements
